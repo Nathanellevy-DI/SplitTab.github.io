@@ -17,6 +17,7 @@ export default function App() {
     const [fees, setFees] = useState([]); // [{ id, name, value, type: 'amount'|'percent' }]
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
 
     // Assignment state: { itemId: [personId, ...] }
     const [assignments, setAssignments] = useState({});
@@ -45,7 +46,7 @@ export default function App() {
                 );
 
                 if (!shouldIgnore && name) {
-                    parsedItems.push({ id: Date.now() + index, name, price });
+                    parsedItems.push({ id: Date.now() + index, name, price, quantity: 1 });
                 }
             }
         });
@@ -56,10 +57,41 @@ export default function App() {
         setAssignments(initialAssignments);
     };
 
-    const handleFileUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
 
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            processFile(file);
+        }
+    };
+
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            processFile(file);
+        }
+    };
+
+    const processFile = async (file) => {
         setIsProcessing(true);
         setProgress(0);
 
@@ -89,7 +121,7 @@ export default function App() {
     };
 
     const addItem = () => {
-        const newItem = { id: Date.now(), name: '', price: 0 };
+        const newItem = { id: Date.now(), name: '', price: 0, quantity: 1 };
         setItems([...items, newItem]);
         setAssignments({ ...assignments, [newItem.id]: [] });
     };
@@ -146,7 +178,7 @@ export default function App() {
         }
     };
 
-    const subtotal = items.reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+    const subtotal = items.reduce((acc, item) => acc + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
 
     // Calculate global values
     const totalFees = fees.reduce((acc, f) => {
@@ -164,9 +196,10 @@ export default function App() {
             items.forEach(item => {
                 const assignedPeople = assignments[item.id] || [];
                 if (assignedPeople.includes(person.id)) {
-                    const share = (parseFloat(item.price) || 0) / assignedPeople.length;
+                    const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+                    const share = itemTotal / assignedPeople.length;
                     personSubtotal += share;
-                    personItems.push({ name: item.name, share });
+                    personItems.push({ name: item.name, quantity: item.quantity, share });
                 }
             });
 
@@ -193,7 +226,7 @@ export default function App() {
         let text = "🏷️ SplitTab Receipt Summary\n\n";
         breakdown.forEach(p => {
             text += `👤 ${p.name}\n`;
-            p.items.forEach(i => text += `  - ${i.name}: $${i.share.toFixed(2)}\n`);
+            p.items.forEach(i => text += `  - ${i.quantity > 1 ? i.quantity + 'x ' : ''}${i.name}: $${i.share.toFixed(2)}\n`);
             if (p.tax > 0) text += `  Tax: $${p.tax.toFixed(2)}\n`;
             if (p.tip > 0) text += `  Tip: $${p.tip.toFixed(2)}\n`;
             if (p.fees > 0) text += `  Fees: $${p.fees.toFixed(2)}\n`;
@@ -245,8 +278,14 @@ export default function App() {
                     <div
                         className="upload-zone"
                         onClick={() => fileInputRef.current.click()}
+                        onDragOver={handleDragOver}
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
                         style={{
-                            border: '2px dashed var(--border)', borderRadius: '1rem',
+                            border: `2px dashed ${isDragging ? 'var(--primary)' : 'var(--border)'}`,
+                            backgroundColor: isDragging ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
+                            borderRadius: '1rem',
                             padding: '3rem 1rem', cursor: 'pointer', transition: 'all 0.3s ease'
                         }}
                     >
@@ -285,19 +324,29 @@ export default function App() {
 
                         <div style={{ marginBottom: '2rem' }}>
                             {items.map(item => (
-                                <div key={item.id} className="item-row">
+                                <div key={item.id} className="item-row" style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 32px', gap: '0.75rem', alignItems: 'stretch', marginBottom: '0.5rem' }}>
                                     <input
                                         className="input-field" type="text" value={item.name}
                                         placeholder="Item name" onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                                        style={{ margin: 0 }}
                                     />
-                                    <div className="price-input-wrapper">
+                                    <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', borderRadius: '0.75rem', padding: '0 0.5rem', border: '1px solid var(--border)' }}>
+                                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)' }}>Qty</span>
+                                        <input
+                                            type="number" min="1" value={item.quantity || 1}
+                                            onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
+                                            style={{ flex: 1, minWidth: '40px', border: 'none', background: 'transparent', textAlign: 'center', fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)', outline: 'none', padding: '0.5rem 0' }}
+                                        />
+                                    </div>
+                                    <div className="price-input-wrapper" style={{ margin: 0 }}>
                                         <span>$</span>
                                         <input
                                             className="input-field" type="number" step="0.01" value={item.price}
                                             onChange={(e) => updateItem(item.id, 'price', e.target.value)}
+                                            style={{ margin: 0 }}
                                         />
                                     </div>
-                                    <button className="delete-btn" onClick={() => deleteItem(item.id)}>×</button>
+                                    <button className="delete-btn" onClick={() => deleteItem(item.id)} style={{ margin: 0 }}>×</button>
                                 </div>
                             ))}
                         </div>
@@ -437,7 +486,7 @@ export default function App() {
                                 <div style={{ marginBottom: '1rem' }}>
                                     {p.items.map((i, idx) => (
                                         <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>{i.name}</span>
+                                            <span style={{ color: 'var(--text-muted)' }}>{i.quantity > 1 ? `${i.quantity}x ` : ''}{i.name}</span>
                                             <span style={{ fontWeight: 500 }}>${i.share.toFixed(2)}</span>
                                         </div>
                                     ))}
