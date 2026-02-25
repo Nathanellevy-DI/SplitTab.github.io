@@ -798,24 +798,24 @@ export default function App() {
                                     </div>
 
                                     {/* Mark as Paid Toggle */}
-                                    {whoPaid && whoPaid !== p.id.toString() && (
-                                        <div style={{ background: paidStatus[p.id] ? '#dcfce7' : '#f1f5f9', borderRadius: '0.5rem', padding: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', transition: 'all 0.2s', border: paidStatus[p.id] ? '1px solid #86efac' : '1px solid transparent' }}>
-                                            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: paidStatus[p.id] ? '#166534' : 'var(--text-muted)' }}>
-                                                {paidStatus[p.id] ? '✓ Paid' : 'Unpaid'}
+                                    {whoPaid !== p.id.toString() && (
+                                        <div style={{ background: paidStatus[p.id] ? '#f1f5f9' : '#f1f5f9', borderRadius: '0.5rem', padding: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', transition: 'all 0.2s', border: paidStatus[p.id] ? '1px solid transparent' : '1px solid transparent' }}>
+                                            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                                Friend's Status
                                             </span>
                                             <button
                                                 className="btn"
-                                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: paidStatus[p.id] ? 'white' : '#cbd5e1', color: paidStatus[p.id] ? '#166534' : 'var(--text-main)', border: paidStatus[p.id] ? '1px solid #bbf7d0' : 'none' }}
+                                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: paidStatus[p.id] ? '#ef4444' : '#cbd5e1', color: paidStatus[p.id] ? 'white' : 'var(--text-main)', border: 'none' }}
                                                 onClick={() => setPaidStatus({ ...paidStatus, [p.id]: !paidStatus[p.id] })}
                                             >
-                                                Mark {paidStatus[p.id] ? 'Unpaid' : 'Paid'}
+                                                {paidStatus[p.id] ? 'Unmark Paid' : 'Mark as Paid'}
                                             </button>
                                         </div>
                                     )}
 
                                     {/* Venmo Integration */}
-                                    {whoPaid && whoPaid !== p.id.toString() && !paidStatus[p.id] && (
-                                        <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {whoPaid !== p.id.toString() && (
+                                        <div style={{ position: 'relative', marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                             <div className="price-input-wrapper">
                                                 <span style={{ fontWeight: 800, color: 'var(--text-muted)' }}>@</span>
                                                 <input
@@ -857,6 +857,27 @@ export default function App() {
                                             >
                                                 Request ${p.total.toFixed(2)} from @{venmoUsernames[p.id] ? venmoUsernames[p.id].replace('@', '') : ''}
                                             </button>
+
+                                            {paidStatus[p.id] && (
+                                                <div
+                                                    style={{
+                                                        position: 'absolute', inset: 0, background: 'rgba(241, 245, 249, 0.65)', backdropFilter: 'blur(3px)',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, borderRadius: '0.5rem',
+                                                        transition: 'all 0.3s ease', cursor: 'pointer'
+                                                    }}
+                                                    onClick={() => setPaidStatus({ ...paidStatus, [p.id]: false })}
+                                                    onMouseEnter={(e) => { e.currentTarget.querySelector('.paid-stamp').style.opacity = '1'; }}
+                                                    onMouseLeave={(e) => { e.currentTarget.querySelector('.paid-stamp').style.opacity = '0.4'; }}
+                                                >
+                                                    <div className="paid-stamp" style={{
+                                                        color: '#ef4444', fontWeight: 900, fontSize: '2rem', transform: 'rotate(-10deg)',
+                                                        border: '3px solid #ef4444', padding: '0.25rem 1rem', borderRadius: '0.5rem',
+                                                        opacity: 0.4, transition: 'opacity 0.2s', letterSpacing: '0.1em', pointerEvents: 'none', background: 'rgba(255,255,255,0.6)'
+                                                    }}>
+                                                        PAID
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
