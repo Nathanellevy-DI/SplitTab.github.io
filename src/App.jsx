@@ -71,12 +71,12 @@ export default function App() {
                 const data = imageData.data;
                 for (let i = 0; i < data.length; i += 4) {
                     const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                    // Increase contrast for better text reading
-                    const contrast = 1.6;
+                    // Tesseract 4/5 uses LSTM which works better on grayscale; heavy binarization hurts it.
+                    // Just cleanly convert to grayscale and apply a mild contrast boost.
+                    const contrast = 1.2;
                     const intercept = 128 * (1 - contrast);
                     let val = gray * contrast + intercept;
-                    // Thresholding for clean text
-                    val = val > 160 ? 255 : (val < 80 ? 0 : val);
+                    val = Math.max(0, Math.min(255, val));
                     data[i] = data[i + 1] = data[i + 2] = val;
                 }
                 ctx.putImageData(imageData, 0, 0);
@@ -92,11 +92,11 @@ export default function App() {
     const parseOCRText = (text) => {
         const lines = text.split('\n');
         const parsedItems = [];
-        // Match optional parens or minus around the price
-        const priceRegex = /^(.*?)\s*?\$?\s*?\(?(-?\d+[.,]\d{2})\)?\s*$/;
+        // Match optional parens or minus around the price, and allow trailing letters (e.g. 'T', 'X' for tax codes)
+        const priceRegex = /^(.*?)\s+?\$?\s*?\(?(-?\d+[.,]\d{2})\)?\s*[a-zA-Z]*\s*$/;
 
         // Keywords to ignore (case-insensitive)
-        const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount'];
+        const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount', 'change', 'cash'];
         // Keywords indicating a discount
         const discountKeywords = ['save', 'discount', 'coupon', 'promo', 'card savings', 'savings'];
 
