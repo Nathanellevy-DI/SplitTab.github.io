@@ -366,16 +366,16 @@ export default function App() {
                         <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>Split Equally</h3>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>How many ways would you like to split the bill?</p>
 
-                        <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', borderRadius: '0.75rem', padding: '0.5rem 1rem', border: '1px solid var(--border)', marginBottom: '1.5rem' }}>
-                            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '1rem' }}>Ways:</span>
-                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <button className="btn" style={{ padding: '0.25rem 0.75rem', background: '#e2e8f0', borderRadius: '0.5rem' }} onClick={() => setSplitWays(prev => Math.max(1, parseInt(prev || 0) - 1).toString())}>-</button>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f1f5f9', borderRadius: '0.75rem', padding: '0.5rem 1rem', border: '1px solid var(--border)', marginBottom: '1.5rem' }}>
+                            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Ways:</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <button className="btn" style={{ padding: '0.25rem 0.75rem', background: '#e2e8f0', borderRadius: '0.5rem', minWidth: '40px' }} onClick={() => setSplitWays(prev => Math.max(1, parseInt(prev || 0) - 1).toString())}>-</button>
                                 <input
                                     type="number" min="1" value={splitWays}
                                     onChange={(e) => setSplitWays(e.target.value)}
-                                    style={{ flex: 1, minWidth: '40px', border: 'none', background: 'transparent', textAlign: 'center', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', outline: 'none' }}
+                                    style={{ width: '50px', border: 'none', background: 'transparent', textAlign: 'center', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', outline: 'none', margin: 0, padding: 0 }}
                                 />
-                                <button className="btn" style={{ padding: '0.25rem 0.75rem', background: '#e2e8f0', borderRadius: '0.5rem' }} onClick={() => setSplitWays(prev => (parseInt(prev || 0) + 1).toString())}>+</button>
+                                <button className="btn" style={{ padding: '0.25rem 0.75rem', background: '#e2e8f0', borderRadius: '0.5rem', minWidth: '40px' }} onClick={() => setSplitWays(prev => (parseInt(prev || 0) + 1).toString())}>+</button>
                             </div>
                         </div>
 
