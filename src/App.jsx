@@ -34,6 +34,9 @@ export default function App() {
     const [showSplitModal, setShowSplitModal] = useState(false);
     const [splitWays, setSplitWays] = useState('2');
 
+    // Venmo Integration State
+    const [venmoUsernames, setVenmoUsernames] = useState({});
+
     const fileInputRef = useRef(null);
 
     // Preprocess image for OCR accuracy (grayscale, contrast, scale)
@@ -724,9 +727,54 @@ export default function App() {
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                                         <span>Fees Share</span><span>${p.fees.toFixed(2)}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                                         <span style={{ fontWeight: 700 }}>Total</span>
                                         <span className="summary-total">${p.total.toFixed(2)}</span>
+                                    </div>
+
+                                    {/* Venmo Integration */}
+                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        <div className="price-input-wrapper">
+                                            <span style={{ fontWeight: 800, color: 'var(--text-muted)' }}>@</span>
+                                            <input
+                                                className="input-field"
+                                                type="text"
+                                                placeholder="Venmo Username"
+                                                value={venmoUsernames[p.id] || ''}
+                                                onChange={(e) => setVenmoUsernames({ ...venmoUsernames, [p.id]: e.target.value })}
+                                                style={{ fontSize: '0.875rem', padding: '0.5rem 1rem 0.5rem 2rem' }}
+                                            />
+                                        </div>
+                                        <button
+                                            className="btn"
+                                            style={{ background: '#008CFF', color: 'white', fontSize: '0.875rem', padding: '0.5rem', width: '100%' }}
+                                            disabled={!venmoUsernames[p.id]}
+                                            onClick={() => {
+                                                const amount = p.total.toFixed(2);
+                                                const username = venmoUsernames[p.id].replace('@', '');
+
+                                                // Create note from items
+                                                const topItems = p.items.slice(0, 2).map(i => i.name).join(', ');
+                                                const moreCount = p.items.length > 2 ? ` +${p.items.length - 2} more` : '';
+                                                const noteText = `SplitTab - ${new Date().toLocaleDateString()} - ${topItems}${moreCount}`;
+                                                const encodedNote = encodeURIComponent(noteText);
+
+                                                const appLink = `venmo://paycharge?txn=charge&recipients=${username}&amount=${amount}&note=${encodedNote}`;
+                                                const webLink = `https://venmo.com/?txn=charge&audience=private&recipients=${username}&amount=${amount}&note=${encodedNote}`;
+
+                                                // Attempt App Deep Link
+                                                window.location.href = appLink;
+
+                                                // Fallback to web link if app isn't installed
+                                                setTimeout(() => {
+                                                    if (!document.hidden) {
+                                                        window.open(webLink, '_blank');
+                                                    }
+                                                }, 500);
+                                            }}
+                                        >
+                                            Request ${p.total.toFixed(2)} from @{venmoUsernames[p.id] ? venmoUsernames[p.id].replace('@', '') : ''}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -741,6 +789,7 @@ export default function App() {
                         <button className="btn" style={{ background: 'transparent', color: 'var(--text-muted)' }} onClick={() => {
                             setItems([]);
                             setAssignments({});
+                            setVenmoUsernames({});
                             setStep(1);
                         }}>Start New Receipt</button>
                     </div>
