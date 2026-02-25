@@ -92,8 +92,8 @@ export default function App() {
     const parseOCRText = (text) => {
         const lines = text.split('\n');
         const parsedItems = [];
-        // Match optional parens or minus around the price, and allow trailing letters (e.g. 'T', 'X' for tax codes)
-        const priceRegex = /^(.*?)\s+?\$?\s*?\(?(-?\d+[.,]\d{2})\)?\s*[a-zA-Z]*\s*$/;
+        // Match optional quantity at start, then name, then price with optional parens/minus/trailing letters
+        const lineRegex = /^(?:(\d+)\s+)?(.*?)\s*?\$?\s*?\(?(-?\d+[.,]\d{2})\)?\s*[a-zA-Z]*\s*$/;
 
         // Keywords to ignore (case-insensitive)
         const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount', 'change', 'cash'];
@@ -102,10 +102,15 @@ export default function App() {
 
         lines.forEach((line, index) => {
             const trimmedLine = line.trim();
-            const match = trimmedLine.match(priceRegex);
+            const match = trimmedLine.match(lineRegex);
             if (match) {
-                const name = match[1].trim();
-                let price = parseFloat(match[2].replace(',', '.'));
+                let quantityStr = match[1];
+                let quantity = quantityStr ? parseInt(quantityStr, 10) : 1;
+                // Sanity check for quantity to avoid parsing huge numbers (like menu numbers if formatting is weird)
+                if (quantity > 100) quantity = 1;
+
+                let name = match[2].trim();
+                let price = parseFloat(match[3].replace(',', '.'));
 
                 // If the entire original line ends with a closing parenthesis, treat as negative
                 if (trimmedLine.endsWith(')') && price > 0) {
@@ -126,7 +131,7 @@ export default function App() {
                 );
 
                 if (!shouldIgnore && name) {
-                    parsedItems.push({ id: Date.now() + index, name, price, quantity: 1 });
+                    parsedItems.push({ id: Date.now() + index, name, price, quantity });
                 }
             }
         });
