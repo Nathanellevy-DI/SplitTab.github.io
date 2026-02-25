@@ -78,9 +78,36 @@ export default function App() {
         });
     };
 
-    // Helper to parse OCR text into items
-    const parseOCRText = (text) => {
-        const lines = text.split('\n');
+    // Helper to parse OCR text using word bounding coordinates (Hybrid Vision approach)
+    const parseOCRData = (data) => {
+        const { words } = data || { words: [] };
+        if (!words || words.length === 0) return;
+
+        const linesObj = {};
+        const threshold = 15; // pixels for line grouping
+
+        words.forEach(word => {
+            if (!word.bbox) return;
+            const y = word.bbox.y0;
+            // Find an existing line within the threshold
+            const lineY = Object.keys(linesObj).find(ly => Math.abs(parseFloat(ly) - y) < threshold);
+
+            if (lineY) {
+                linesObj[lineY].push(word);
+            } else {
+                linesObj[y] = [word];
+            }
+        });
+
+        // Reconstruct lines from grouped words, sorted vertically then horizontally
+        const sortedY = Object.keys(linesObj).sort((a, b) => parseFloat(a) - parseFloat(b));
+        const linesArray = sortedY.map(y => {
+            const sortedWords = linesObj[y].sort((a, b) => a.bbox.x0 - b.bbox.x0);
+            return sortedWords.map(w => w.text).join(' ');
+        });
+
+        console.log("Reconstructed Lines from Coordinates:", linesArray);
+
         const parsedItems = [];
         // Match optional quantity at start, then name, then price (allowing commas) with optional parens/minus/trailing letters
         const lineRegex = /^(?:(\d+)\s+)?(.*?)\s*?\$?\s*?\(?(-?[\d,]+[.,]\d{2})\)?\s*[a-zA-Z]*\s*$/;
@@ -90,7 +117,7 @@ export default function App() {
         // Keywords indicating a discount
         const discountKeywords = ['save', 'discount', 'coupon', 'promo', 'card savings', 'savings'];
 
-        lines.forEach((line, index) => {
+        linesArray.forEach((line, index) => {
             const trimmedLine = line.trim();
             const match = trimmedLine.match(lineRegex);
             if (match) {
@@ -197,10 +224,10 @@ export default function App() {
                 preserve_interword_spaces: '1'
             });
 
-            const { data: { text } } = await worker.recognize(processedImage);
+            const { data } = await worker.recognize(processedImage);
             await worker.terminate();
 
-            parseOCRText(text);
+            parseOCRData(data);
             setStep(2);
         } catch (error) {
             console.error('OCR Error:', error);
