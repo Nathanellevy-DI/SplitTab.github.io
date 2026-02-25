@@ -30,6 +30,10 @@ export default function App() {
     // Assignment state: { itemId: [personId, ...] }
     const [assignments, setAssignments] = useState({});
 
+    // Equal Split Modal State
+    const [showSplitModal, setShowSplitModal] = useState(false);
+    const [splitWays, setSplitWays] = useState('2');
+
     const fileInputRef = useRef(null);
 
     // Preprocess image for OCR accuracy (grayscale, contrast, scale)
@@ -351,6 +355,82 @@ export default function App() {
                 </div>
             )}
 
+            {/* Custom Split Array Modal */}
+            {showSplitModal && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+                    backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', zIndex: 1000, padding: '1rem'
+                }}>
+                    <div className="card" style={{ width: '100%', maxWidth: '360px', margin: 0, animation: 'fadeIn 0.2s ease-out' }}>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>Split Equally</h3>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>How many ways would you like to split the bill?</p>
+
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#f1f5f9', borderRadius: '0.75rem', padding: '0.5rem 1rem', border: '1px solid var(--border)', marginBottom: '1.5rem' }}>
+                            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '1rem' }}>Ways:</span>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <button className="btn" style={{ padding: '0.25rem 0.75rem', background: '#e2e8f0', borderRadius: '0.5rem' }} onClick={() => setSplitWays(prev => Math.max(1, parseInt(prev || 0) - 1).toString())}>-</button>
+                                <input
+                                    type="number" min="1" value={splitWays}
+                                    onChange={(e) => setSplitWays(e.target.value)}
+                                    style={{ flex: 1, minWidth: '40px', border: 'none', background: 'transparent', textAlign: 'center', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', outline: 'none' }}
+                                />
+                                <button className="btn" style={{ padding: '0.25rem 0.75rem', background: '#e2e8f0', borderRadius: '0.5rem' }} onClick={() => setSplitWays(prev => (parseInt(prev || 0) + 1).toString())}>+</button>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button className="btn" style={{ flex: 1, background: '#e2e8f0', color: 'var(--text-main)' }} onClick={() => setShowSplitModal(false)}>Cancel</button>
+                            <button className="btn btn-primary" style={{ flex: 1, padding: '0.75rem' }} onClick={() => {
+                                const numPeople = splitWays;
+                                if (numPeople && !isNaN(numPeople) && parseInt(numPeople) > 0) {
+                                    const count = parseInt(numPeople);
+                                    const newPeople = [];
+                                    for (let i = 1; i <= count; i++) {
+                                        newPeople.push({ id: i, name: `Person ${i}` });
+                                    }
+                                    setPeople(newPeople);
+
+                                    const newAssignments = {};
+                                    items.forEach(item => {
+                                        newAssignments[item.id] = newPeople.map(p => p.id);
+                                    });
+                                    setAssignments(newAssignments);
+
+                                    // Save to history before viewing summary (Calculate totals properly)
+                                    const tempTotalFees = fees.reduce((acc, f) => {
+                                        const val = parseFloat(f.value) || 0;
+                                        return acc + (f.type === 'percent' ? (subtotal * val / 100) : val);
+                                    }, 0);
+                                    const tempCalculatedTip = tipType === 'percent' ? (subtotal * tip / 100) : parseFloat(tip);
+                                    const tempTotal = subtotal + parseFloat(tax) + tempCalculatedTip + tempTotalFees;
+
+                                    const newEntry = {
+                                        id: Date.now(),
+                                        date: new Date().toLocaleString(),
+                                        items,
+                                        people: newPeople,
+                                        tax,
+                                        tip,
+                                        tipType,
+                                        fees,
+                                        assignments: newAssignments,
+                                        subtotal,
+                                        total: tempTotal
+                                    };
+                                    const updatedHistory = [newEntry, ...history].slice(0, 5);
+                                    setHistory(updatedHistory);
+                                    localStorage.setItem('receiptHistory', JSON.stringify(updatedHistory));
+
+                                    setShowSplitModal(false);
+                                    setStep(4);
+                                }
+                            }}>Split</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {step === 1 && (
                 <div className="card animate-step" style={{ textAlign: 'center' }}>
                     <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Step 1: Upload Receipt</h2>
@@ -532,22 +612,8 @@ export default function App() {
                             style={{ background: '#e2e8f0', color: 'var(--text-main)', fontSize: '1rem' }}
                             disabled={items.length === 0}
                             onClick={() => {
-                                const numPeople = prompt("How many ways do you want to split the bill equally?", "2");
-                                if (numPeople && !isNaN(numPeople) && parseInt(numPeople) > 0) {
-                                    const count = parseInt(numPeople);
-                                    const newPeople = [];
-                                    for (let i = 1; i <= count; i++) {
-                                        newPeople.push({ id: i, name: `Person ${i}` });
-                                    }
-                                    setPeople(newPeople);
-
-                                    const newAssignments = {};
-                                    items.forEach(item => {
-                                        newAssignments[item.id] = newPeople.map(p => p.id);
-                                    });
-                                    setAssignments(newAssignments);
-                                    setStep(4);
-                                }
+                                setSplitWays('2');
+                                setShowSplitModal(true);
                             }}
                         >
                             Split Equally
