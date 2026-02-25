@@ -525,7 +525,35 @@ export default function App() {
                             </div>
                         </div>
                     </div>
-                    <button className="btn btn-primary" disabled={items.length === 0} onClick={() => setStep(3)}>Next: Assign People</button>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <button
+                            className="btn"
+                            style={{ background: '#e2e8f0', color: 'var(--text-main)', fontSize: '1rem' }}
+                            disabled={items.length === 0}
+                            onClick={() => {
+                                const numPeople = prompt("How many ways do you want to split the bill equally?", "2");
+                                if (numPeople && !isNaN(numPeople) && parseInt(numPeople) > 0) {
+                                    const count = parseInt(numPeople);
+                                    const newPeople = [];
+                                    for (let i = 1; i <= count; i++) {
+                                        newPeople.push({ id: i, name: `Person ${i}` });
+                                    }
+                                    setPeople(newPeople);
+
+                                    const newAssignments = {};
+                                    items.forEach(item => {
+                                        newAssignments[item.id] = newPeople.map(p => p.id);
+                                    });
+                                    setAssignments(newAssignments);
+                                    setStep(4);
+                                }
+                            }}
+                        >
+                            Split Equally
+                        </button>
+                        <button className="btn btn-primary" disabled={items.length === 0} onClick={() => setStep(3)}>Assign Individually</button>
+                    </div>
                 </div>
             )}
 
