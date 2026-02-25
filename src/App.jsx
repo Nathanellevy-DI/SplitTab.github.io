@@ -110,7 +110,8 @@ export default function App() {
                 if (quantity > 100) quantity = 1;
 
                 let name = match[2].trim();
-                let price = parseFloat(match[3].replace(',', '.'));
+                let lineTotal = parseFloat(match[3].replace(',', '.'));
+                let price = lineTotal / quantity;
 
                 // If the entire original line ends with a closing parenthesis, treat as negative
                 if (trimmedLine.endsWith(')') && price > 0) {
