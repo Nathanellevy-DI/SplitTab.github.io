@@ -18,27 +18,98 @@ export default function App() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const [history, setHistory] = useState(() => {
+        try {
+            const saved = localStorage.getItem('receiptHistory');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            return [];
+        }
+    });
 
     // Assignment state: { itemId: [personId, ...] }
     const [assignments, setAssignments] = useState({});
 
     const fileInputRef = useRef(null);
 
+    // Preprocess image for OCR accuracy (grayscale, contrast, scale)
+    const preprocessImage = (file) => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                // Scale based on max dimension to prevent Tesseract memory issues on huge mobile photos
+                const MAX_DIM = 2000;
+                let width = img.width;
+                let height = img.height;
+                if (width > height && width > MAX_DIM) {
+                    height = Math.round((height * MAX_DIM) / width);
+                    width = MAX_DIM;
+                } else if (height > MAX_DIM) {
+                    width = Math.round((width * MAX_DIM) / height);
+                    height = MAX_DIM;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                // Draw white background
+                ctx.fillStyle = "white";
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    // Increase contrast for better text reading
+                    const contrast = 1.6;
+                    const intercept = 128 * (1 - contrast);
+                    let val = gray * contrast + intercept;
+                    // Thresholding for clean text
+                    val = val > 160 ? 255 : (val < 80 ? 0 : val);
+                    data[i] = data[i + 1] = data[i + 2] = val;
+                }
+                ctx.putImageData(imageData, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.9));
+            };
+            img.onerror = reject;
+            // Use URL.createObjectURL directly
+            img.src = URL.createObjectURL(file);
+        });
+    };
+
     // Helper to parse OCR text into items
     const parseOCRText = (text) => {
         const lines = text.split('\n');
         const parsedItems = [];
-        const priceRegex = /^(.*?)\s*?\$?\s*?(\d+[.,]\d{2})\s*$/;
+        // Match optional parens or minus around the price
+        const priceRegex = /^(.*?)\s*?\$?\s*?\(?(-?\d+[.,]\d{2})\)?\s*$/;
 
         // Keywords to ignore (case-insensitive)
         const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount'];
+        // Keywords indicating a discount
+        const discountKeywords = ['save', 'discount', 'coupon', 'promo', 'card savings', 'savings'];
 
         lines.forEach((line, index) => {
             const trimmedLine = line.trim();
             const match = trimmedLine.match(priceRegex);
             if (match) {
                 const name = match[1].trim();
-                const price = parseFloat(match[2].replace(',', '.'));
+                let price = parseFloat(match[2].replace(',', '.'));
+
+                // If the entire original line ends with a closing parenthesis, treat as negative
+                if (trimmedLine.endsWith(')') && price > 0) {
+                    price = -price;
+                }
+
+                // If name contains words like 'discount' or 'save', it's a negative price
+                if (price > 0) {
+                    const isDiscount = discountKeywords.some(keyword => name.toLowerCase().includes(keyword.toLowerCase()));
+                    if (isDiscount) {
+                        price = -price;
+                    }
+                }
 
                 // Skip if the name contains any ignore keywords
                 const shouldIgnore = ignoreKeywords.some(keyword =>
@@ -96,6 +167,8 @@ export default function App() {
         setProgress(0);
 
         try {
+            const processedImage = await preprocessImage(file);
+
             const { createWorker } = window.Tesseract;
             const worker = await createWorker({
                 logger: m => {
@@ -107,7 +180,13 @@ export default function App() {
 
             await worker.loadLanguage('eng');
             await worker.initialize('eng');
-            const { data: { text } } = await worker.recognize(file);
+
+            // PSM 4 assumes a single column of text of variable sizes, good for receipts
+            await worker.setParameters({
+                tessedit_pageseg_mode: window.Tesseract.PSM ? window.Tesseract.PSM.SINGLE_COLUMN : '4',
+            });
+
+            const { data: { text } } = await worker.recognize(processedImage);
             await worker.terminate();
 
             parseOCRText(text);
@@ -305,6 +384,37 @@ export default function App() {
                     >
                         Skip to manual entry
                     </button>
+
+                    {history.length > 0 && (
+                        <div style={{ marginTop: '3rem', textAlign: 'left' }}>
+                            <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '1rem' }}>Recent Splits</h3>
+                            <div style={{ display: 'grid', gap: '0.75rem' }}>
+                                {history.map(entry => (
+                                    <div
+                                        key={entry.id}
+                                        className="card"
+                                        style={{ marginBottom: 0, padding: '1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                        onClick={() => {
+                                            setItems(entry.items);
+                                            setPeople(entry.people);
+                                            setTax(entry.tax);
+                                            setTip(entry.tip);
+                                            setTipType(entry.tipType);
+                                            setFees(entry.fees);
+                                            setAssignments(entry.assignments);
+                                            setStep(4);
+                                        }}
+                                    >
+                                        <div>
+                                            <p style={{ fontWeight: 600, fontSize: '0.875rem' }}>{entry.date}</p>
+                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{entry.people.length} people • ${entry.total.toFixed(2)}</p>
+                                        </div>
+                                        <div style={{ color: 'var(--primary)', fontWeight: 700 }}>➔</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -324,7 +434,7 @@ export default function App() {
 
                         <div style={{ marginBottom: '2rem' }}>
                             {items.map(item => (
-                                <div key={item.id} className="item-row" style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 32px', gap: '0.75rem', alignItems: 'stretch', marginBottom: '0.5rem' }}>
+                                <div key={item.id} className="item-row">
                                     <input
                                         className="input-field" type="text" value={item.name}
                                         placeholder="Item name" onChange={(e) => updateItem(item.id, 'name', e.target.value)}
@@ -472,7 +582,26 @@ export default function App() {
                             ))}
                         </div>
                     </div>
-                    <button className="btn btn-primary" onClick={() => setStep(4)}>Finally: View Summary</button>
+                    <button className="btn btn-primary" onClick={() => {
+                        // Save to history before viewing summary
+                        const newEntry = {
+                            id: Date.now(),
+                            date: new Date().toLocaleString(),
+                            items,
+                            people,
+                            tax,
+                            tip,
+                            tipType,
+                            fees,
+                            assignments,
+                            subtotal,
+                            total
+                        };
+                        const updatedHistory = [newEntry, ...history].slice(0, 5);
+                        setHistory(updatedHistory);
+                        localStorage.setItem('receiptHistory', JSON.stringify(updatedHistory));
+                        setStep(4);
+                    }}>Finally: View Summary</button>
                 </div>
             )}
 
@@ -514,12 +643,15 @@ export default function App() {
                         <button className="btn" style={{ background: '#e2e8f0', flex: 1 }} onClick={() => setStep(3)}>Back</button>
                         <button className="btn btn-primary" style={{ flex: 2 }} onClick={copySummary}>Copy Summary</button>
                     </div>
+                    <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                        <button className="btn" style={{ background: 'transparent', color: 'var(--text-muted)' }} onClick={() => {
+                            setItems([]);
+                            setAssignments({});
+                            setStep(1);
+                        }}>Start New Receipt</button>
+                    </div>
                 </div>
             )}
-
-            <footer style={{ marginTop: '4rem', textAlign: 'center', color: 'var(--text-muted)', paddingBottom: '2rem' }}>
-                <p style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Built with React & Precision</p>
-            </footer>
         </div>
     );
 }

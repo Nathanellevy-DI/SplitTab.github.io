@@ -170,7 +170,7 @@ header p {
 /* Item Row */
 .item-row {
     display: grid;
-    grid-template-columns: 1fr 100px 40px;
+    grid-template-columns: 1fr 100px 100px 32px;
     gap: 0.75rem;
     align-items: center;
     margin-bottom: 0.75rem;
@@ -255,5 +255,25 @@ header p {
 @media (max-width: 640px) {
     .summary-grid {
         grid-template-columns: 1fr;
+    }
+
+    .item-row {
+        grid-template-columns: 1fr 1fr 32px;
+    }
+
+    .item-row> :nth-child(1) {
+        grid-column: 1 / -1;
+    }
+
+    .item-row> :nth-child(2) {
+        grid-column: 1 / 2;
+    }
+
+    .item-row> :nth-child(3) {
+        grid-column: 2 / 3;
+    }
+
+    .item-row> :nth-child(4) {
+        grid-column: 3 / 4;
     }
 }
