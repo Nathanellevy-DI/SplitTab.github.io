@@ -41,46 +41,36 @@ export default function App() {
 
     const fileInputRef = useRef(null);
 
-    // Preprocess image for OCR accuracy (grayscale, contrast, scale)
+    // Preprocess image for OCR accuracy (scale optimally for Tesseract LSTM)
     const preprocessImage = (file) => {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                // Scale based on max dimension to prevent Tesseract memory issues on huge mobile photos
-                const MAX_DIM = 2000;
-                let width = img.width;
-                let height = img.height;
-                if (width > height && width > MAX_DIM) {
-                    height = Math.round((height * MAX_DIM) / width);
-                    width = MAX_DIM;
-                } else if (height > MAX_DIM) {
-                    width = Math.round((width * MAX_DIM) / height);
-                    height = MAX_DIM;
+                // Scale to a consistent optimal size for Tesseract (1500-2500px max dimension)
+                const MIN_DIM = 1500;
+                const MAX_DIM = 2500;
+                let scale = 1;
+                const maxCurrent = Math.max(img.width, img.height);
+                if (maxCurrent < MIN_DIM) {
+                    scale = MIN_DIM / maxCurrent;
+                } else if (maxCurrent > MAX_DIM) {
+                    scale = MAX_DIM / maxCurrent;
                 }
+
+                const width = Math.round(img.width * scale);
+                const height = Math.round(img.height * scale);
 
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
-                // Draw white background
+                // Draw white background to remove transparent padding
                 ctx.fillStyle = "white";
                 ctx.fillRect(0, 0, width, height);
                 ctx.drawImage(img, 0, 0, width, height);
 
-                const imageData = ctx.getImageData(0, 0, width, height);
-                const data = imageData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                    // Tesseract 4/5 uses LSTM which works better on grayscale; heavy binarization hurts it.
-                    // Just cleanly convert to grayscale and apply a mild contrast boost.
-                    const contrast = 1.2;
-                    const intercept = 128 * (1 - contrast);
-                    let val = gray * contrast + intercept;
-                    val = Math.max(0, Math.min(255, val));
-                    data[i] = data[i + 1] = data[i + 2] = val;
-                }
-                ctx.putImageData(imageData, 0, 0);
-                resolve(canvas.toDataURL('image/jpeg', 0.9));
+                // Tesseract 4/5 LSTM performs best on raw un-binarized images with proper scaling
+                resolve(canvas.toDataURL('image/jpeg', 0.95));
             };
             img.onerror = reject;
             // Use URL.createObjectURL directly
@@ -92,11 +82,11 @@ export default function App() {
     const parseOCRText = (text) => {
         const lines = text.split('\n');
         const parsedItems = [];
-        // Match optional quantity at start, then name, then price with optional parens/minus/trailing letters
-        const lineRegex = /^(?:(\d+)\s+)?(.*?)\s*?\$?\s*?\(?(-?\d+[.,]\d{2})\)?\s*[a-zA-Z]*\s*$/;
+        // Match optional quantity at start, then name, then price (allowing commas) with optional parens/minus/trailing letters
+        const lineRegex = /^(?:(\d+)\s+)?(.*?)\s*?\$?\s*?\(?(-?[\d,]+[.,]\d{2})\)?\s*[a-zA-Z]*\s*$/;
 
         // Keywords to ignore (case-insensitive)
-        const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount', 'change', 'cash'];
+        const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount', 'change', 'cash', 'grat', 'tip', 'gratuity'];
         // Keywords indicating a discount
         const discountKeywords = ['save', 'discount', 'coupon', 'promo', 'card savings', 'savings'];
 
@@ -110,7 +100,12 @@ export default function App() {
                 if (quantity > 100) quantity = 1;
 
                 let name = match[2].trim();
-                let lineTotal = parseFloat(match[3].replace(',', '.'));
+
+                // Clean up price string (handle commas like 10,000.00 or European 10.000,00)
+                let cleanPriceStr = match[3].replace(/,(?=\d{3})/g, ''); // Remove thousands commas
+                cleanPriceStr = cleanPriceStr.replace(',', '.'); // Convert remaining decimal comma to dot
+
+                let lineTotal = parseFloat(cleanPriceStr);
                 let price = lineTotal / quantity;
 
                 // If the entire original line ends with a closing parenthesis, treat as negative
@@ -196,9 +191,10 @@ export default function App() {
             await worker.loadLanguage('eng');
             await worker.initialize('eng');
 
-            // PSM 4 assumes a single column of text of variable sizes, good for receipts
+            // PSM 6 assumes a single uniform block of text, keeping right-aligned prices perfectly aligned line-by-line
             await worker.setParameters({
-                tessedit_pageseg_mode: window.Tesseract.PSM ? window.Tesseract.PSM.SINGLE_COLUMN : '4',
+                tessedit_pageseg_mode: window.Tesseract.PSM ? window.Tesseract.PSM.ASSUME_UNIFORM_BLOCK_OF_TEXT : '6',
+                preserve_interword_spaces: '1'
             });
 
             const { data: { text } } = await worker.recognize(processedImage);
