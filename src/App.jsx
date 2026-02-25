@@ -755,21 +755,6 @@ export default function App() {
                 <div className="animate-step">
                     <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', textAlign: 'center' }}>Step 4: Summary Breakdown</h2>
 
-                    <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
-                        <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Who paid the bill?</p>
-                        <select
-                            className="input-field"
-                            value={whoPaid}
-                            onChange={(e) => setWhoPaid(e.target.value)}
-                            style={{ maxWidth: '300px', margin: '0 auto', display: 'block' }}
-                        >
-                            <option value="">Select the person who paid</option>
-                            {people.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
                     <div className="summary-grid">
                         {calculateBreakdown().map(p => (
                             <div key={p.id} className="card person-card">
@@ -798,88 +783,84 @@ export default function App() {
                                     </div>
 
                                     {/* Mark as Paid Toggle */}
-                                    {whoPaid !== p.id.toString() && (
-                                        <div style={{ background: paidStatus[p.id] ? '#f1f5f9' : '#f1f5f9', borderRadius: '0.5rem', padding: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', transition: 'all 0.2s', border: paidStatus[p.id] ? '1px solid transparent' : '1px solid transparent' }}>
-                                            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                                                Friend's Status
-                                            </span>
-                                            <button
-                                                className="btn"
-                                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: paidStatus[p.id] ? '#ef4444' : '#cbd5e1', color: paidStatus[p.id] ? 'white' : 'var(--text-main)', border: 'none' }}
-                                                onClick={() => setPaidStatus({ ...paidStatus, [p.id]: !paidStatus[p.id] })}
-                                            >
-                                                {paidStatus[p.id] ? 'Unmark Paid' : 'Mark as Paid'}
-                                            </button>
-                                        </div>
-                                    )}
+                                    <div style={{ background: paidStatus[p.id] ? '#f1f5f9' : '#f1f5f9', borderRadius: '0.5rem', padding: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', transition: 'all 0.2s', border: paidStatus[p.id] ? '1px solid transparent' : '1px solid transparent' }}>
+                                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                            Friend's Status
+                                        </span>
+                                        <button
+                                            className="btn"
+                                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: paidStatus[p.id] ? '#ef4444' : '#cbd5e1', color: paidStatus[p.id] ? 'white' : 'var(--text-main)', border: 'none' }}
+                                            onClick={() => setPaidStatus({ ...paidStatus, [p.id]: !paidStatus[p.id] })}
+                                        >
+                                            {paidStatus[p.id] ? 'Unmark Paid' : 'Mark as Paid'}
+                                        </button>
+                                    </div>
 
                                     {/* Venmo Integration */}
-                                    {whoPaid !== p.id.toString() && (
-                                        <div style={{ position: 'relative', marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                            <div className="price-input-wrapper">
-                                                <span style={{ fontWeight: 800, color: 'var(--text-muted)' }}>@</span>
-                                                <input
-                                                    className="input-field"
-                                                    type="text"
-                                                    placeholder="Venmo Username"
-                                                    value={venmoUsernames[p.id] || ''}
-                                                    onChange={(e) => setVenmoUsernames({ ...venmoUsernames, [p.id]: e.target.value })}
-                                                    style={{ fontSize: '0.875rem', padding: '0.5rem 1rem 0.5rem 2rem' }}
-                                                />
-                                            </div>
-                                            <button
-                                                className="btn"
-                                                style={{ background: '#008CFF', color: 'white', fontSize: '0.875rem', padding: '0.5rem', width: '100%' }}
-                                                disabled={!venmoUsernames[p.id]}
-                                                onClick={() => {
-                                                    const amount = p.total.toFixed(2);
-                                                    const username = venmoUsernames[p.id].replace('@', '');
-
-                                                    // Create note from items
-                                                    const topItems = p.items.slice(0, 2).map(i => i.name).join(', ');
-                                                    const moreCount = p.items.length > 2 ? ` +${p.items.length - 2} more` : '';
-                                                    const noteText = `SplitTab - ${new Date().toLocaleDateString()} - ${topItems}${moreCount}`;
-                                                    const encodedNote = encodeURIComponent(noteText);
-
-                                                    const appLink = `venmo://paycharge?txn=charge&recipients=${username}&amount=${amount}&note=${encodedNote}`;
-                                                    const webLink = `https://venmo.com/?txn=charge&audience=private&recipients=${username}&amount=${amount}&note=${encodedNote}`;
-
-                                                    // Attempt App Deep Link
-                                                    window.location.href = appLink;
-
-                                                    // Fallback to web link if app isn't installed
-                                                    setTimeout(() => {
-                                                        if (!document.hidden) {
-                                                            window.open(webLink, '_blank');
-                                                        }
-                                                    }, 500);
-                                                }}
-                                            >
-                                                Request ${p.total.toFixed(2)} from @{venmoUsernames[p.id] ? venmoUsernames[p.id].replace('@', '') : ''}
-                                            </button>
-
-                                            {paidStatus[p.id] && (
-                                                <div
-                                                    style={{
-                                                        position: 'absolute', inset: 0, background: 'rgba(241, 245, 249, 0.65)', backdropFilter: 'blur(3px)',
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, borderRadius: '0.5rem',
-                                                        transition: 'all 0.3s ease', cursor: 'pointer'
-                                                    }}
-                                                    onClick={() => setPaidStatus({ ...paidStatus, [p.id]: false })}
-                                                    onMouseEnter={(e) => { e.currentTarget.querySelector('.paid-stamp').style.opacity = '1'; }}
-                                                    onMouseLeave={(e) => { e.currentTarget.querySelector('.paid-stamp').style.opacity = '0.4'; }}
-                                                >
-                                                    <div className="paid-stamp" style={{
-                                                        color: '#ef4444', fontWeight: 900, fontSize: '2rem', transform: 'rotate(-10deg)',
-                                                        border: '3px solid #ef4444', padding: '0.25rem 1rem', borderRadius: '0.5rem',
-                                                        opacity: 0.4, transition: 'opacity 0.2s', letterSpacing: '0.1em', pointerEvents: 'none', background: 'rgba(255,255,255,0.6)'
-                                                    }}>
-                                                        PAID
-                                                    </div>
-                                                </div>
-                                            )}
+                                    <div style={{ position: 'relative', marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        <div className="price-input-wrapper">
+                                            <span style={{ fontWeight: 800, color: 'var(--text-muted)' }}>@</span>
+                                            <input
+                                                className="input-field"
+                                                type="text"
+                                                placeholder="Venmo Username"
+                                                value={venmoUsernames[p.id] || ''}
+                                                onChange={(e) => setVenmoUsernames({ ...venmoUsernames, [p.id]: e.target.value })}
+                                                style={{ fontSize: '0.875rem', padding: '0.5rem 1rem 0.5rem 2rem' }}
+                                            />
                                         </div>
-                                    )}
+                                        <button
+                                            className="btn"
+                                            style={{ background: '#008CFF', color: 'white', fontSize: '0.875rem', padding: '0.5rem', width: '100%' }}
+                                            disabled={!venmoUsernames[p.id]}
+                                            onClick={() => {
+                                                const amount = p.total.toFixed(2);
+                                                const username = venmoUsernames[p.id].replace('@', '');
+
+                                                // Create note from items
+                                                const topItems = p.items.slice(0, 2).map(i => i.name).join(', ');
+                                                const moreCount = p.items.length > 2 ? ` +${p.items.length - 2} more` : '';
+                                                const noteText = `SplitTab - ${new Date().toLocaleDateString()} - ${topItems}${moreCount}`;
+                                                const encodedNote = encodeURIComponent(noteText);
+
+                                                const appLink = `venmo://paycharge?txn=charge&recipients=${username}&amount=${amount}&note=${encodedNote}`;
+                                                const webLink = `https://venmo.com/?txn=charge&audience=private&recipients=${username}&amount=${amount}&note=${encodedNote}`;
+
+                                                // Attempt App Deep Link
+                                                window.location.href = appLink;
+
+                                                // Fallback to web link if app isn't installed
+                                                setTimeout(() => {
+                                                    if (!document.hidden) {
+                                                        window.open(webLink, '_blank');
+                                                    }
+                                                }, 500);
+                                            }}
+                                        >
+                                            Request ${p.total.toFixed(2)} from @{venmoUsernames[p.id] ? venmoUsernames[p.id].replace('@', '') : ''}
+                                        </button>
+
+                                        {paidStatus[p.id] && (
+                                            <div
+                                                style={{
+                                                    position: 'absolute', inset: 0, background: 'rgba(241, 245, 249, 0.65)', backdropFilter: 'blur(3px)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, borderRadius: '0.5rem',
+                                                    transition: 'all 0.3s ease', cursor: 'pointer'
+                                                }}
+                                                onClick={() => setPaidStatus({ ...paidStatus, [p.id]: false })}
+                                                onMouseEnter={(e) => { e.currentTarget.querySelector('.paid-stamp').style.opacity = '1'; }}
+                                                onMouseLeave={(e) => { e.currentTarget.querySelector('.paid-stamp').style.opacity = '0.4'; }}
+                                            >
+                                                <div className="paid-stamp" style={{
+                                                    color: '#ef4444', fontWeight: 900, fontSize: '2rem', transform: 'rotate(-10deg)',
+                                                    border: '3px solid #ef4444', padding: '0.25rem 1rem', borderRadius: '0.5rem',
+                                                    opacity: 0.4, transition: 'opacity 0.2s', letterSpacing: '0.1em', pointerEvents: 'none', background: 'rgba(255,255,255,0.6)'
+                                                }}>
+                                                    PAID
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
