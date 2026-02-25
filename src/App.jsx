@@ -36,6 +36,8 @@ export default function App() {
 
     // Venmo Integration State
     const [venmoUsernames, setVenmoUsernames] = useState({});
+    const [paidStatus, setPaidStatus] = useState({});
+    const [whoPaid, setWhoPaid] = useState('');
 
     const fileInputRef = useRef(null);
 
@@ -418,6 +420,9 @@ export default function App() {
                                         tipType,
                                         fees,
                                         assignments: newAssignments,
+                                        venmoUsernames,
+                                        paidStatus,
+                                        whoPaid,
                                         subtotal,
                                         total: tempTotal
                                     };
@@ -485,6 +490,9 @@ export default function App() {
                                             setTipType(entry.tipType);
                                             setFees(entry.fees);
                                             setAssignments(entry.assignments);
+                                            setVenmoUsernames(entry.venmoUsernames || {});
+                                            setPaidStatus(entry.paidStatus || {});
+                                            setWhoPaid(entry.whoPaid || '');
                                             setStep(4);
                                         }}
                                     >
@@ -492,7 +500,16 @@ export default function App() {
                                             <p style={{ fontWeight: 600, fontSize: '0.875rem' }}>{entry.date}</p>
                                             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{entry.people.length} people • ${entry.total.toFixed(2)}</p>
                                         </div>
-                                        <div style={{ color: 'var(--primary)', fontWeight: 700 }}>➔</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <div style={{ color: 'var(--primary)', fontWeight: 700 }}>➔</div>
+                                            <button
+                                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.25rem', cursor: 'pointer' }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); // Prevent card click
+                                                    setHistory(history.filter(h => h.id !== entry.id));
+                                                    localStorage.setItem('receiptHistory', JSON.stringify(history.filter(h => h.id !== entry.id)));
+                                                }}>×</button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -691,6 +708,9 @@ export default function App() {
                             tipType,
                             fees,
                             assignments,
+                            venmoUsernames,
+                            paidStatus,
+                            whoPaid,
                             subtotal,
                             total
                         };
@@ -704,7 +724,23 @@ export default function App() {
 
             {step === 4 && (
                 <div className="animate-step">
-                    <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Step 4: Summary Breakdown</h2>
+                    <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', textAlign: 'center' }}>Step 4: Summary Breakdown</h2>
+
+                    <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+                        <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Who paid the bill?</p>
+                        <select
+                            className="input-field"
+                            value={whoPaid}
+                            onChange={(e) => setWhoPaid(e.target.value)}
+                            style={{ maxWidth: '300px', margin: '0 auto', display: 'block' }}
+                        >
+                            <option value="">Select the person who paid</option>
+                            {people.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <div className="summary-grid">
                         {calculateBreakdown().map(p => (
                             <div key={p.id} className="card person-card">
@@ -732,50 +768,68 @@ export default function App() {
                                         <span className="summary-total">${p.total.toFixed(2)}</span>
                                     </div>
 
-                                    {/* Venmo Integration */}
-                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                        <div className="price-input-wrapper">
-                                            <span style={{ fontWeight: 800, color: 'var(--text-muted)' }}>@</span>
-                                            <input
-                                                className="input-field"
-                                                type="text"
-                                                placeholder="Venmo Username"
-                                                value={venmoUsernames[p.id] || ''}
-                                                onChange={(e) => setVenmoUsernames({ ...venmoUsernames, [p.id]: e.target.value })}
-                                                style={{ fontSize: '0.875rem', padding: '0.5rem 1rem 0.5rem 2rem' }}
-                                            />
+                                    {/* Mark as Paid Toggle */}
+                                    {whoPaid && whoPaid !== p.id.toString() && (
+                                        <div style={{ background: paidStatus[p.id] ? '#dcfce7' : '#f1f5f9', borderRadius: '0.5rem', padding: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', transition: 'all 0.2s', border: paidStatus[p.id] ? '1px solid #86efac' : '1px solid transparent' }}>
+                                            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: paidStatus[p.id] ? '#166534' : 'var(--text-muted)' }}>
+                                                {paidStatus[p.id] ? '✓ Paid' : 'Unpaid'}
+                                            </span>
+                                            <button
+                                                className="btn"
+                                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: paidStatus[p.id] ? 'white' : '#cbd5e1', color: paidStatus[p.id] ? '#166534' : 'var(--text-main)', border: paidStatus[p.id] ? '1px solid #bbf7d0' : 'none' }}
+                                                onClick={() => setPaidStatus({ ...paidStatus, [p.id]: !paidStatus[p.id] })}
+                                            >
+                                                Mark {paidStatus[p.id] ? 'Unpaid' : 'Paid'}
+                                            </button>
                                         </div>
-                                        <button
-                                            className="btn"
-                                            style={{ background: '#008CFF', color: 'white', fontSize: '0.875rem', padding: '0.5rem', width: '100%' }}
-                                            disabled={!venmoUsernames[p.id]}
-                                            onClick={() => {
-                                                const amount = p.total.toFixed(2);
-                                                const username = venmoUsernames[p.id].replace('@', '');
+                                    )}
 
-                                                // Create note from items
-                                                const topItems = p.items.slice(0, 2).map(i => i.name).join(', ');
-                                                const moreCount = p.items.length > 2 ? ` +${p.items.length - 2} more` : '';
-                                                const noteText = `SplitTab - ${new Date().toLocaleDateString()} - ${topItems}${moreCount}`;
-                                                const encodedNote = encodeURIComponent(noteText);
+                                    {/* Venmo Integration */}
+                                    {whoPaid && whoPaid !== p.id.toString() && !paidStatus[p.id] && (
+                                        <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <div className="price-input-wrapper">
+                                                <span style={{ fontWeight: 800, color: 'var(--text-muted)' }}>@</span>
+                                                <input
+                                                    className="input-field"
+                                                    type="text"
+                                                    placeholder="Venmo Username"
+                                                    value={venmoUsernames[p.id] || ''}
+                                                    onChange={(e) => setVenmoUsernames({ ...venmoUsernames, [p.id]: e.target.value })}
+                                                    style={{ fontSize: '0.875rem', padding: '0.5rem 1rem 0.5rem 2rem' }}
+                                                />
+                                            </div>
+                                            <button
+                                                className="btn"
+                                                style={{ background: '#008CFF', color: 'white', fontSize: '0.875rem', padding: '0.5rem', width: '100%' }}
+                                                disabled={!venmoUsernames[p.id]}
+                                                onClick={() => {
+                                                    const amount = p.total.toFixed(2);
+                                                    const username = venmoUsernames[p.id].replace('@', '');
 
-                                                const appLink = `venmo://paycharge?txn=charge&recipients=${username}&amount=${amount}&note=${encodedNote}`;
-                                                const webLink = `https://venmo.com/?txn=charge&audience=private&recipients=${username}&amount=${amount}&note=${encodedNote}`;
+                                                    // Create note from items
+                                                    const topItems = p.items.slice(0, 2).map(i => i.name).join(', ');
+                                                    const moreCount = p.items.length > 2 ? ` +${p.items.length - 2} more` : '';
+                                                    const noteText = `SplitTab - ${new Date().toLocaleDateString()} - ${topItems}${moreCount}`;
+                                                    const encodedNote = encodeURIComponent(noteText);
 
-                                                // Attempt App Deep Link
-                                                window.location.href = appLink;
+                                                    const appLink = `venmo://paycharge?txn=charge&recipients=${username}&amount=${amount}&note=${encodedNote}`;
+                                                    const webLink = `https://venmo.com/?txn=charge&audience=private&recipients=${username}&amount=${amount}&note=${encodedNote}`;
 
-                                                // Fallback to web link if app isn't installed
-                                                setTimeout(() => {
-                                                    if (!document.hidden) {
-                                                        window.open(webLink, '_blank');
-                                                    }
-                                                }, 500);
-                                            }}
-                                        >
-                                            Request ${p.total.toFixed(2)} from @{venmoUsernames[p.id] ? venmoUsernames[p.id].replace('@', '') : ''}
-                                        </button>
-                                    </div>
+                                                    // Attempt App Deep Link
+                                                    window.location.href = appLink;
+
+                                                    // Fallback to web link if app isn't installed
+                                                    setTimeout(() => {
+                                                        if (!document.hidden) {
+                                                            window.open(webLink, '_blank');
+                                                        }
+                                                    }, 500);
+                                                }}
+                                            >
+                                                Request ${p.total.toFixed(2)} from @{venmoUsernames[p.id] ? venmoUsernames[p.id].replace('@', '') : ''}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -790,6 +844,8 @@ export default function App() {
                             setItems([]);
                             setAssignments({});
                             setVenmoUsernames({});
+                            setPaidStatus({});
+                            setWhoPaid('');
                             setStep(1);
                         }}>Start New Receipt</button>
                     </div>

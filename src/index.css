@@ -259,7 +259,7 @@ header p {
     }
 
     .item-row {
-        grid-template-columns: 1fr 1fr 32px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
     }
 
     .item-row> :nth-child(1) {
