@@ -84,11 +84,15 @@ export default function App() {
         if (!words || words.length === 0) return;
 
         const linesObj = {};
-        const threshold = 15; // pixels for line grouping
 
         words.forEach(word => {
             if (!word.bbox) return;
-            const y = word.bbox.y0;
+
+            // Use the vertical center of the word for more stable clustering
+            const y = (word.bbox.y0 + word.bbox.y1) / 2;
+            // Adaptive threshold: roughly 60% of the word's height to tolerate skewed lines
+            const threshold = Math.max(15, (word.bbox.y1 - word.bbox.y0) * 0.6);
+
             // Find an existing line within the threshold
             const lineY = Object.keys(linesObj).find(ly => Math.abs(parseFloat(ly) - y) < threshold);
 
@@ -109,8 +113,8 @@ export default function App() {
         console.log("Reconstructed Lines from Coordinates:", linesArray);
 
         const parsedItems = [];
-        // Match optional quantity at start, then name, then price (allowing commas) with optional parens/minus/trailing letters
-        const lineRegex = /^(?:(\d+)\s+)?(.*?)\s*?\$?\s*?\(?(-?[\d,]+[.,]\d{2})\)?\s*[a-zA-Z]*\s*$/;
+        // Match optional quantity at start, then name, then price (allowing commas) with optional parens/minus/any trailing garbage
+        const lineRegex = /^(?:(\d+)\s+)?(.*?)\s*?\$?\s*?\(?(-?[\d,]+[.,]\d{2})\)?\s*.*$/;
 
         // Keywords to ignore (case-insensitive)
         const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount', 'change', 'cash', 'grat', 'tip', 'gratuity'];
@@ -218,9 +222,10 @@ export default function App() {
             await worker.loadLanguage('eng');
             await worker.initialize('eng');
 
-            // PSM 6 assumes a single uniform block of text, keeping right-aligned prices perfectly aligned line-by-line
+            // PSM 4 assumes a single column of text of variable sizes (best for real-world receipts with skew)
+            // We do our own horizontal line clustering, so PSM 4 is safer than PSM 6 for finding the text blocks.
             await worker.setParameters({
-                tessedit_pageseg_mode: window.Tesseract.PSM ? window.Tesseract.PSM.ASSUME_UNIFORM_BLOCK_OF_TEXT : '6',
+                tessedit_pageseg_mode: window.Tesseract.PSM ? window.Tesseract.PSM.SINGLE_COLUMN : '4',
                 preserve_interword_spaces: '1'
             });
 
