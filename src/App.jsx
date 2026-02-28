@@ -1,5 +1,4 @@
-import React, { useState, useRef } from 'react';
-import heic2any from 'heic2any';
+import React, { useState } from 'react';
 
 /**
  * SplitTab - A premium receipt splitting tool.
@@ -16,9 +15,6 @@ export default function App() {
     const [tip, setTip] = useState(0);
     const [tipType, setTipType] = useState('amount'); // 'amount' or 'percent'
     const [fees, setFees] = useState([]); // [{ id, name, value, type: 'amount'|'percent' }]
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [progress, setProgress] = useState(0);
-    const [isDragging, setIsDragging] = useState(false);
     const [history, setHistory] = useState(() => {
         try {
             const saved = localStorage.getItem('receiptHistory');
@@ -39,266 +35,6 @@ export default function App() {
     const [venmoUsernames, setVenmoUsernames] = useState({});
     const [paidStatus, setPaidStatus] = useState({});
     const [whoPaid, setWhoPaid] = useState('');
-
-    const fileInputRef = useRef(null);
-
-    // Preprocess image for OCR accuracy (scale optimally for Tesseract LSTM)
-    const preprocessImage = (file) => {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                // Scale to a consistent optimal size for Tesseract (1500-2500px max dimension)
-                const MIN_DIM = 1500;
-                const MAX_DIM = 2500;
-                let scale = 1;
-                const maxCurrent = Math.max(img.width, img.height);
-                if (maxCurrent < MIN_DIM) {
-                    scale = MIN_DIM / maxCurrent;
-                } else if (maxCurrent > MAX_DIM) {
-                    scale = MAX_DIM / maxCurrent;
-                }
-
-                const width = Math.round(img.width * scale);
-                const height = Math.round(img.height * scale);
-
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                // Draw white background to remove transparent padding
-                ctx.fillStyle = "white";
-                ctx.fillRect(0, 0, width, height);
-                ctx.drawImage(img, 0, 0, width, height);
-
-                const imageData = ctx.getImageData(0, 0, width, height);
-                const data = imageData.data;
-
-                // 1. Grayscale & Contrast Normalization (Crucial for live photos)
-                let min = 255;
-                let max = 0;
-
-                // Find global min and max for contrast stretching
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    // Luma (grayscale)
-                    const gray = r * 0.299 + g * 0.587 + b * 0.114;
-                    if (gray < min) min = gray;
-                    if (gray > max) max = gray;
-                }
-
-                // Stretch contrast and convert to grayscale
-                for (let i = 0; i < data.length; i += 4) {
-                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                    // Normalize to 0-255 based on min/max
-                    let normalized = ((gray - min) / (max - min)) * 255;
-
-                    // Add slight aggressive darkening to text (low values) to help LSTM
-                    if (normalized < 150) {
-                        normalized = normalized * 0.8;
-                    } else {
-                        normalized = Math.min(255, normalized * 1.1);
-                    }
-
-                    data[i] = data[i + 1] = data[i + 2] = normalized;
-                }
-
-                ctx.putImageData(imageData, 0, 0);
-
-                // Tesseract 4/5 LSTM performs best on non-destructively binarized images 
-                resolve(canvas.toDataURL('image/jpeg', 0.95));
-            };
-            img.onerror = reject;
-            // Use URL.createObjectURL directly
-            img.src = URL.createObjectURL(file);
-        });
-    };
-
-    // Helper to parse OCR text using word bounding coordinates (Hybrid Vision approach)
-    const parseOCRData = (data) => {
-        const { words } = data || { words: [] };
-        if (!words || words.length === 0) {
-            console.warn("OCR found no readable words.");
-            return false;
-        }
-
-        const linesObj = {};
-
-        words.forEach(word => {
-            if (!word.bbox) return;
-
-            // Use the vertical center of the word for more stable clustering
-            const y = (word.bbox.y0 + word.bbox.y1) / 2;
-            // Adaptive threshold: roughly 60% of the word's height to tolerate skewed lines
-            const threshold = Math.max(15, (word.bbox.y1 - word.bbox.y0) * 0.6);
-
-            // Find an existing line within the threshold
-            const lineY = Object.keys(linesObj).find(ly => Math.abs(parseFloat(ly) - y) < threshold);
-
-            if (lineY) {
-                linesObj[lineY].push(word);
-            } else {
-                linesObj[y] = [word];
-            }
-        });
-
-        // Reconstruct lines from grouped words, sorted vertically then horizontally
-        const sortedY = Object.keys(linesObj).sort((a, b) => parseFloat(a) - parseFloat(b));
-        const linesArray = sortedY.map(y => {
-            const sortedWords = linesObj[y].sort((a, b) => a.bbox.x0 - b.bbox.x0);
-            return sortedWords.map(w => w.text).join(' ');
-        });
-
-        console.log("Reconstructed Lines from Coordinates:", linesArray);
-
-        const parsedItems = [];
-        // Match optional quantity at start, then name, then price (allowing commas) with optional parens/minus/any trailing garbage
-        const lineRegex = /^(?:(\d+)\s+)?(.*?)\s*?\$?\s*?\(?(-?[\d,]+[.,]\d{2})\)?\s*.*$/;
-
-        // Keywords to ignore (case-insensitive)
-        const ignoreKeywords = ['subtotal', 'total', 'tax', 'due', 'balance', 'items', 'amount', 'change', 'cash', 'grat', 'tip', 'gratuity'];
-        // Keywords indicating a discount
-        const discountKeywords = ['save', 'discount', 'coupon', 'promo', 'card savings', 'savings'];
-
-        linesArray.forEach((line, index) => {
-            const trimmedLine = line.trim();
-            const match = trimmedLine.match(lineRegex);
-            if (match) {
-                let quantityStr = match[1];
-                let quantity = quantityStr ? parseInt(quantityStr, 10) : 1;
-                // Sanity check for quantity to avoid parsing huge numbers (like menu numbers if formatting is weird)
-                if (quantity > 100) quantity = 1;
-
-                let name = match[2].trim();
-
-                // Clean up price string (handle commas like 10,000.00 or European 10.000,00)
-                let cleanPriceStr = match[3].replace(/,(?=\d{3})/g, ''); // Remove thousands commas
-                cleanPriceStr = cleanPriceStr.replace(',', '.'); // Convert remaining decimal comma to dot
-
-                let lineTotal = parseFloat(cleanPriceStr);
-                let price = lineTotal / quantity;
-
-                // If the entire original line ends with a closing parenthesis, treat as negative
-                if (trimmedLine.endsWith(')') && price > 0) {
-                    price = -price;
-                }
-
-                // If name contains words like 'discount' or 'save', it's a negative price
-                if (price > 0) {
-                    const isDiscount = discountKeywords.some(keyword => name.toLowerCase().includes(keyword.toLowerCase()));
-                    if (isDiscount) {
-                        price = -price;
-                    }
-                }
-
-                // Skip if the name contains any ignore keywords
-                const shouldIgnore = ignoreKeywords.some(keyword =>
-                    name.toLowerCase().includes(keyword.toLowerCase())
-                );
-
-                if (!shouldIgnore && name) {
-                    parsedItems.push({ id: Date.now() + index, name, price, quantity });
-                }
-            }
-        });
-
-        setItems(parsedItems);
-        const initialAssignments = {};
-        parsedItems.forEach(item => { initialAssignments[item.id] = []; });
-        setAssignments(initialAssignments);
-        return parsedItems.length > 0;
-    };
-
-    const handleDragOver = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
-
-    const handleDragEnter = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-    };
-
-    const handleDrop = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-        const file = e.dataTransfer.files[0];
-        if (file) {
-            processFile(file);
-        }
-    };
-
-    const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            processFile(file);
-        }
-    };
-
-    const processFile = async (file) => {
-        setIsProcessing(true);
-        setProgress(0);
-
-        try {
-            let imageFile = file;
-            // Native handling for iPhone HEIC/HEIF photos which crash the OCR canvas
-            if (file.type === "image/heic" || file.type === "image/heif" || file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif")) {
-                try {
-                    const convertedBlob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
-                    const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-                    imageFile = new File([blob], file.name.replace(/\.heic|\.heif/i, ".jpg"), { type: "image/jpeg" });
-                } catch (e) {
-                    console.error("HEIC conversion failed:", e);
-                }
-            }
-
-            const processedImage = await preprocessImage(imageFile);
-
-            const { createWorker } = window.Tesseract;
-            const worker = await createWorker({
-                logger: m => {
-                    if (m.status === 'recognizing text') {
-                        setProgress(Math.round(m.progress * 100));
-                    }
-                }
-            });
-
-            await worker.loadLanguage('eng');
-            await worker.initialize('eng');
-
-            // PSM 4 assumes a single column of text of variable sizes (best for real-world receipts with skew)
-            // We do our own horizontal line clustering, so PSM 4 is safer than PSM 6 for finding the text blocks.
-            await worker.setParameters({
-                tessedit_pageseg_mode: window.Tesseract.PSM ? window.Tesseract.PSM.SINGLE_COLUMN : '4',
-                preserve_interword_spaces: '1'
-            });
-
-            const { data } = await worker.recognize(processedImage);
-            await worker.terminate();
-
-            const success = parseOCRData(data);
-            if (!success) {
-                alert("We couldn't detect any readable items from this image. Please try another photo or enter items manually.");
-            }
-            // Always proceed to Step 2 so the user isn't stuck
-            setStep(2);
-        } catch (error) {
-            console.error('OCR Error:', error);
-            alert('An error occurred while scanning. Proceeding to manual entry.');
-            setStep(2);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
 
     const addItem = () => {
         const newItem = { id: Date.now(), name: '', price: 0, quantity: 1 };
@@ -426,7 +162,7 @@ export default function App() {
         <div className="app-container">
             <div className="progress-stepper">
                 <div className="progress-line"></div>
-                {[1, 2, 3, 4].map(s => (
+                {[1, 2, 3].map(s => (
                     <div key={s} className={`step-node ${step === s ? 'active' : ''} ${step > s ? 'completed' : ''}`}>
                         {step > s ? '✓' : s}
                     </div>
@@ -437,20 +173,6 @@ export default function App() {
                 <h1>SplitTab</h1>
                 <p>Receipt splitting with precision</p>
             </header>
-
-            {isProcessing && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.8)',
-                    backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', zIndex: 1000
-                }}>
-                    <div style={{ textAlign: 'center' }}>
-                        <div className="spinner"></div>
-                        <p style={{ fontWeight: 800, marginTop: '1rem' }}>Processing Receipt...</p>
-                        <p style={{ color: 'var(--text-muted)' }}>{progress}%</p>
-                    </div>
-                </div>
-            )}
 
             {/* Custom Split Array Modal */}
             {showSplitModal && (
@@ -523,7 +245,7 @@ export default function App() {
                                     localStorage.setItem('receiptHistory', JSON.stringify(updatedHistory));
 
                                     setShowSplitModal(false);
-                                    setStep(4);
+                                    setStep(3);
                                 }
                             }}>Split</button>
                         </div>
@@ -532,41 +254,9 @@ export default function App() {
             )}
 
             {step === 1 && (
-                <div className="card animate-step" style={{ textAlign: 'center' }}>
-                    <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Step 1: Upload Receipt</h2>
-                    <div
-                        className="upload-zone"
-                        onClick={() => fileInputRef.current.click()}
-                        onDragOver={handleDragOver}
-                        onDragEnter={handleDragEnter}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        style={{
-                            border: `2px dashed ${isDragging ? 'var(--primary)' : 'var(--border)'}`,
-                            backgroundColor: isDragging ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
-                            borderRadius: '1rem',
-                            padding: '3rem 1rem', cursor: 'pointer', transition: 'all 0.3s ease'
-                        }}
-                    >
-                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📸</div>
-                        <p style={{ fontWeight: 600 }}>Tap to scan image</p>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>or drag and drop here</p>
-                        <input
-                            type="file" ref={fileInputRef} className="hidden"
-                            accept="image/*" onChange={handleFileUpload}
-                            style={{ display: 'none' }}
-                        />
-                    </div>
-                    <button
-                        className="btn"
-                        style={{ marginTop: '1.5rem', color: 'var(--text-muted)' }}
-                        onClick={() => setStep(2)}
-                    >
-                        Skip to manual entry
-                    </button>
-
+                <div className="animate-step">
                     {history.length > 0 && (
-                        <div style={{ marginTop: '3rem', textAlign: 'left' }}>
+                        <div style={{ marginBottom: '2rem', textAlign: 'left' }}>
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '1rem' }}>Recent Splits</h3>
                             <div style={{ display: 'grid', gap: '0.75rem' }}>
                                 {history.map(entry => (
@@ -585,7 +275,7 @@ export default function App() {
                                             setVenmoUsernames(entry.venmoUsernames || {});
                                             setPaidStatus(entry.paidStatus || {});
                                             setWhoPaid(entry.whoPaid || '');
-                                            setStep(4);
+                                            setStep(3);
                                         }}
                                     >
                                         <div>
@@ -607,14 +297,10 @@ export default function App() {
                             </div>
                         </div>
                     )}
-                </div>
-            )}
 
-            {step === 2 && (
-                <div className="animate-step">
                     <div className="card">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                            <h2 style={{ fontSize: '1.25rem' }}>Step 2: Review Items</h2>
+                            <h2 style={{ fontSize: '1.25rem' }}>Step 1: Add Items</h2>
                             <button
                                 className="btn"
                                 style={{ background: '#f1f5f9', color: 'var(--primary)', fontSize: '0.875rem', padding: '0.5rem 1rem' }}
@@ -730,15 +416,15 @@ export default function App() {
                         >
                             Split Equally
                         </button>
-                        <button className="btn btn-primary" disabled={items.length === 0} onClick={() => setStep(3)}>Assign Individually</button>
+                        <button className="btn btn-primary" disabled={items.length === 0} onClick={() => setStep(2)}>Assign Individually</button>
                     </div>
                 </div>
             )}
 
-            {step === 3 && (
+            {step === 2 && (
                 <div className="animate-step">
                     <div className="card">
-                        <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Step 3: Assign People</h2>
+                        <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Step 2: Assign People</h2>
 
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '2rem' }}>
                             {people.map(p => (
@@ -809,14 +495,14 @@ export default function App() {
                         const updatedHistory = [newEntry, ...history].slice(0, 5);
                         setHistory(updatedHistory);
                         localStorage.setItem('receiptHistory', JSON.stringify(updatedHistory));
-                        setStep(4);
+                        setStep(3);
                     }}>Finally: View Summary</button>
                 </div>
             )}
 
-            {step === 4 && (
+            {step === 3 && (
                 <div className="animate-step">
-                    <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', textAlign: 'center' }}>Step 4: Summary Breakdown</h2>
+                    <h2 style={{ marginBottom: '1.5rem', fontSize: '1.25rem', textAlign: 'center' }}>Step 3: Summary Breakdown</h2>
 
                     <div className="summary-grid">
                         {calculateBreakdown().map(p => (
@@ -930,7 +616,7 @@ export default function App() {
                     </div>
 
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                        <button className="btn" style={{ background: '#e2e8f0', flex: 1 }} onClick={() => setStep(3)}>Back</button>
+                        <button className="btn" style={{ background: '#e2e8f0', flex: 1 }} onClick={() => setStep(2)}>Back</button>
                         <button className="btn btn-primary" style={{ flex: 2 }} onClick={copySummary}>Copy Summary</button>
                     </div>
                     <div style={{ marginTop: '1rem', textAlign: 'center' }}>
