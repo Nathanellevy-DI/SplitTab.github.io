@@ -69,7 +69,43 @@ export default function App() {
                 ctx.fillRect(0, 0, width, height);
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Tesseract 4/5 LSTM performs best on raw un-binarized images with proper scaling
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+
+                // 1. Grayscale & Contrast Normalization (Crucial for live photos)
+                let min = 255;
+                let max = 0;
+
+                // Find global min and max for contrast stretching
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    // Luma (grayscale)
+                    const gray = r * 0.299 + g * 0.587 + b * 0.114;
+                    if (gray < min) min = gray;
+                    if (gray > max) max = gray;
+                }
+
+                // Stretch contrast and convert to grayscale
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    // Normalize to 0-255 based on min/max
+                    let normalized = ((gray - min) / (max - min)) * 255;
+
+                    // Add slight aggressive darkening to text (low values) to help LSTM
+                    if (normalized < 150) {
+                        normalized = normalized * 0.8;
+                    } else {
+                        normalized = Math.min(255, normalized * 1.1);
+                    }
+
+                    data[i] = data[i + 1] = data[i + 2] = normalized;
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+
+                // Tesseract 4/5 LSTM performs best on non-destructively binarized images 
                 resolve(canvas.toDataURL('image/jpeg', 0.95));
             };
             img.onerror = reject;
