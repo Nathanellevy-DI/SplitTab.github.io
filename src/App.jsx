@@ -117,7 +117,10 @@ export default function App() {
     // Helper to parse OCR text using word bounding coordinates (Hybrid Vision approach)
     const parseOCRData = (data) => {
         const { words } = data || { words: [] };
-        if (!words || words.length === 0) return;
+        if (!words || words.length === 0) {
+            console.warn("OCR found no readable words.");
+            return false;
+        }
 
         const linesObj = {};
 
@@ -203,6 +206,7 @@ export default function App() {
         const initialAssignments = {};
         parsedItems.forEach(item => { initialAssignments[item.id] = []; });
         setAssignments(initialAssignments);
+        return parsedItems.length > 0;
     };
 
     const handleDragOver = (e) => {
@@ -268,11 +272,16 @@ export default function App() {
             const { data } = await worker.recognize(processedImage);
             await worker.terminate();
 
-            parseOCRData(data);
+            const success = parseOCRData(data);
+            if (!success) {
+                alert("We couldn't detect any readable items from this image. Please try another photo or enter items manually.");
+            }
+            // Always proceed to Step 2 so the user isn't stuck
             setStep(2);
         } catch (error) {
             console.error('OCR Error:', error);
-            alert('Failed to process image. Please try again or add items manually.');
+            alert('An error occurred while scanning. Proceeding to manual entry.');
+            setStep(2);
         } finally {
             setIsProcessing(false);
         }
