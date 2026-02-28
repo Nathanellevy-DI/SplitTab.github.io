@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import heic2any from 'heic2any';
 
 /**
  * SplitTab - A premium receipt splitting tool.
@@ -248,7 +249,19 @@ export default function App() {
         setProgress(0);
 
         try {
-            const processedImage = await preprocessImage(file);
+            let imageFile = file;
+            // Native handling for iPhone HEIC/HEIF photos which crash the OCR canvas
+            if (file.type === "image/heic" || file.type === "image/heif" || file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif")) {
+                try {
+                    const convertedBlob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+                    const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+                    imageFile = new File([blob], file.name.replace(/\.heic|\.heif/i, ".jpg"), { type: "image/jpeg" });
+                } catch (e) {
+                    console.error("HEIC conversion failed:", e);
+                }
+            }
+
+            const processedImage = await preprocessImage(imageFile);
 
             const { createWorker } = window.Tesseract;
             const worker = await createWorker({
